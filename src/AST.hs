@@ -900,12 +900,12 @@ lookupType context pos ty@(TypeSpec mod name args) = do
 addSimpleResource :: ResourceName -> [Ident] -> ResourceImpln -> Visibility -> Compiler ()
 addSimpleResource name vars impln@(SimpleResource ty _ pos) vis = do
     currMod <- getModuleSpec
-    let unkownVars = Set.toList $ Set.difference (typeVarSet ty) (Set.fromList vars)
+    let unknownVars = Set.toList $ Set.difference (typeVarSet ty) (Set.fromList vars)
     if nub vars /= vars
     then errmsg pos $ "Duplicate type parameter in: " ++ intercalate ", " vars
-    else if not (List.null unkownVars)
+    else if not (List.null unknownVars)
     then errmsg pos $ "In resource parameter, unknown type(s): " 
-                    ++ intercalate ", " unkownVars 
+                    ++ intercalate ", " unknownVars 
     else do
         let rspec = ResourceSpec currMod name $ TypeVariable <$> vars
         let rdef = Map.singleton rspec impln
@@ -924,7 +924,7 @@ lookupResource res@(ResourceSpec mod name vars) = do
     let rspecs' = Set.filter (sameLength vars . resourceVars) rspecs
     logAST $ "Candidates: " ++ show rspecs
     case (Set.size rspecs', Map.lookup name specialResources) of
-        (0, Just (_,ty)) | List.null mod ->
+        (0, Just (_,ty)) | List.null mod && List.null vars ->
             return $ Just $ Map.singleton res
                    $ SimpleResource ty Nothing Nothing
         (0, _) -> return Nothing
