@@ -1,4 +1,3 @@
 Error detected during preliminary processing of module generic_resources_param_errors
 [91mfinal-dump/generic_resources_param_errors.wybe:1:1: Duplicate type parameter in: t, t
-[0m[91mfinal-dump/generic_resources_param_errors.wybe:1:1: In resource parameter, unknown type(s): v
 [0m

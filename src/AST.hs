@@ -900,19 +900,20 @@ lookupType context pos ty@(TypeSpec mod name args) = do
 addSimpleResource :: ResourceName -> [Ident] -> ResourceImpln -> Visibility -> Compiler ()
 addSimpleResource name vars impln@(SimpleResource ty _ pos) vis = do
     currMod <- getModuleSpec
-    unless (nub vars == vars)
-      $ errmsg pos $ "Duplicate type parameter in: " ++ intercalate ", " vars
     let unkownVars = Set.toList $ Set.difference (typeVarSet ty) (Set.fromList vars)
-    unless (List.null unkownVars)
-      $ errmsg pos $ "In resource parameter, unknown type(s): " 
-                  ++ intercalate ", " unkownVars 
-    let rspec = ResourceSpec currMod name $ TypeVariable <$> vars
-    let rdef = Map.singleton rspec impln
-    updateImplementation
-      (\imp -> imp { modResources = Map.insert name rdef $ modResources imp,
-                     modKnownResources = setMapInsert name rspec $
-                                         modKnownResources imp })
-    updateInterface vis $ updatePubResources $ Map.insert name rspec
+    if nub vars /= vars
+    then errmsg pos $ "Duplicate type parameter in: " ++ intercalate ", " vars
+    else if not (List.null unkownVars)
+    then errmsg pos $ "In resource parameter, unknown type(s): " 
+                    ++ intercalate ", " unkownVars 
+    else do
+        let rspec = ResourceSpec currMod name $ TypeVariable <$> vars
+        let rdef = Map.singleton rspec impln
+        updateImplementation
+            (\imp -> imp { modResources = Map.insert name rdef $ modResources imp,
+                           modKnownResources = setMapInsert name rspec
+                                             $ modKnownResources imp })
+        updateInterface vis $ updatePubResources $ Map.insert name rspec
 
 
 -- |Find the definition of the specified resource visible in the current module.

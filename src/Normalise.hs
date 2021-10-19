@@ -91,18 +91,18 @@ normaliseItem (FuncDecl vis mods (ProcProto name params resources) resulttype
         pos)
 normaliseItem (FuncDecl vis mods (ProcProto name params resources)
                         resulttype result pos) =
-  let flowType = Implicit pos
-  in  normaliseItem
-        (ProcDecl vis mods
-            (ProcProto name (params ++ [Param outputVariableName resulttype ParamOut flowType])
-                       resources)
-             [maybePlace (ForeignCall "llvm" "move" []
-                 [maybePlace (Typed (content result) resulttype Nothing)
-                  $ place result,
-                  Unplaced
-                  $ Typed (Var outputVariableName ParamOut flowType) resulttype Nothing])
-              pos]
-        pos)
+    let flowType = Implicit pos
+    in  normaliseItem
+            (ProcDecl vis mods
+                (ProcProto name (params ++ [Param outputVariableName resulttype ParamOut flowType])
+                           resources)
+                 [maybePlace (ForeignCall "llvm" "move" []
+                     [maybePlace (Typed (content result) resulttype Nothing)
+                      $ place result,
+                      Unplaced
+                      $ Typed (Var outputVariableName ParamOut flowType) resulttype Nothing])
+                  pos]
+            pos)
 normaliseItem item@(ProcDecl _ _ _ _ _) = do
     (item',tmpCtr) <- flattenProcDecl item
     logNormalise $ "Normalised proc:" ++ show item'
