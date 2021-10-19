@@ -1102,7 +1102,7 @@ foreignDependencies mods =
 buildMain :: [ModSpec] -> Compiler Item
 buildMain mainImports = do
     logBuild "Generating main executable code"
-    let cmdResource name = ResourceFlowSpec (ResourceSpec ["command_line"] name)
+    let cmdResource name = ResourceFlowSpec (ResourceSpec ["command_line"] name [])
     res <- Set.toList . Set.unions . (keysSet<$>)
            <$> mapM (initialisedResources `inModule`) mainImports
     let detism = setDetism Terminal
@@ -1113,7 +1113,7 @@ buildMain mainImports = do
                                  cmdResource "argv" ParamIn,
                                  cmdResource "exit_code" ParamOut,
                                  ResourceFlowSpec
-                                     (ResourceSpec ["wybe","io"] "io")
+                                     (ResourceSpec ["wybe","io"] "io" [])
                                      ParamOut]
     let mainBody =
           [ Unplaced $

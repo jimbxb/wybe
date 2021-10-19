@@ -1,0 +1,209 @@
+======================================================================
+AFTER EVERYTHING:
+ Module generic_resources
+  representation  : (not a type)
+  public submods  : 
+  public resources: 
+  public procs    : generic_resources.<0>
+  imports         : use wybe
+  resources       : list_of: fromList [(generic_resources.list_of(?t),wybe.list(?t) @generic_resources:nn:nn)]
+  procs           : 
+
+*main* > public {impure} (0 calls)
+0: generic_resources.<0>
+(io##0:wybe.phantom, ?io##6:wybe.phantom):
+ AliasPairs: []
+ InterestingCallProperties: []
+    foreign lpvm alloc(16:wybe.int, ?tmp#11##0:wybe.list(?T))
+    foreign lpvm mutate(~tmp#11##0:wybe.list(?T), ?tmp#12##0:wybe.list(?T), 0:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, 2.0:?T)
+    foreign lpvm mutate(~tmp#12##0:wybe.list(?T), ?tmp#1##0:wybe.list(?T), 8:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, 0:wybe.list(?T))
+    foreign lpvm alloc(16:wybe.int, ?tmp#15##0:wybe.list(?T))
+    foreign lpvm mutate(~tmp#15##0:wybe.list(?T), ?tmp#16##0:wybe.list(?T), 0:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, 1.0:?T)
+    foreign lpvm mutate(~tmp#16##0:wybe.list(?T), ?tmp#0##0:wybe.list(?T), 8:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, ~tmp#1##0:wybe.list(?T))
+    generic_resources.get_default<0>(3.0:?i, ?f##0:?i, ~%tmp#0##0:wybe.list(?i), ?%tmp#0##1:wybe.list(?i)) #15 @generic_resources:nn:nn
+    generic_resources.get_default<0>(1:?i, ?i##0:?i, 0:wybe.list(?i), ?%tmp#3##1:wybe.list(?i)) #16 @generic_resources:nn:nn
+    foreign c print_float(~f##0:wybe.float, ~#io##0:wybe.phantom, ?tmp#23##0:wybe.phantom) @io:nn:nn
+    foreign c putchar('\n':wybe.char, ~tmp#23##0:wybe.phantom, ?#io##3:wybe.phantom) @io:nn:nn
+    foreign c print_int(~i##0:wybe.int, ~#io##3:wybe.phantom, ?tmp#26##0:wybe.phantom) @io:nn:nn
+    foreign c putchar('\n':wybe.char, ~tmp#26##0:wybe.phantom, ?#io##4:wybe.phantom) @io:nn:nn
+    foreign lpvm alloc(16:wybe.int, ?tmp#29##0:wybe.list(?T))
+    foreign lpvm mutate(~tmp#29##0:wybe.list(?T), ?tmp#30##0:wybe.list(?T), 0:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, "b":?T)
+    foreign lpvm mutate(~tmp#30##0:wybe.list(?T), ?tmp#5##0:wybe.list(?T), 8:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, 0:wybe.list(?T))
+    foreign lpvm alloc(16:wybe.int, ?tmp#33##0:wybe.list(?T))
+    foreign lpvm mutate(~tmp#33##0:wybe.list(?T), ?tmp#34##0:wybe.list(?T), 0:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, "a":?T)
+    foreign lpvm mutate(~tmp#34##0:wybe.list(?T), ?list_of##2:wybe.list(?T), 8:wybe.int, 1:wybe.int, 16:wybe.int, 0:wybe.int, ~tmp#5##0:wybe.list(?T))
+    generic_resources.get_default<0>("default":?i, ?out##0:?i, ~list_of##2:wybe.list(?i), ?#list_of##1:wybe.list(?i)) #11 @generic_resources:nn:nn
+    wybe.string.print_string<0>(~out##0:wybe.string, ~#io##4:wybe.phantom, ?tmp#37##0:wybe.phantom) #17 @io:nn:nn
+    foreign c putchar('\n':wybe.char, ~tmp#37##0:wybe.phantom, ?#io##5:wybe.phantom) @io:nn:nn
+    wybe.list.length1<0>(~list_of##1:wybe.list(?T), 0:wybe.int, ?tmp#7##0:wybe.int) #18 @list:nn:nn
+    foreign c print_int(~tmp#7##0:wybe.int, ~#io##5:wybe.phantom, ?tmp#41##0:wybe.phantom) @io:nn:nn
+    foreign c putchar('\n':wybe.char, ~tmp#41##0:wybe.phantom, ?#io##6:wybe.phantom) @io:nn:nn
+
+
+foo > {inline} (2 calls)
+0: generic_resources.foo<0>
+foo(ls##0:wybe.list(?i), ?ls##1:wybe.list(?i), val##0:?i, ?out##0:?i, io##0:wybe.phantom, [?io##0:wybe.phantom]):
+ AliasPairs: []
+ InterestingCallProperties: []
+    generic_resources.get_default<0>(~val##0:?i, ?out##0:?i, ~ls##0:wybe.list(?i), ?#ls##1:wybe.list(?i)) #0 @generic_resources:nn:nn
+
+
+get_default > (2 calls)
+0: generic_resources.get_default<0>
+get_default(in##0:?i, ?out##0:?i, list_of##0:wybe.list(?i), ?list_of##1:wybe.list(?i)):
+ AliasPairs: [(list_of##0,list_of##1)]
+ InterestingCallProperties: []
+    foreign llvm icmp_ne(list_of##0:wybe.int, 0:wybe.int, ?tmp#2##0:wybe.bool)
+    case ~tmp#2##0:wybe.bool of
+    0:
+        foreign llvm move(undef:wybe.list(?T), ?list_of##1:wybe.list(?T))
+        foreign llvm move(~in##0:?i, ?out##0:?i) @generic_resources:nn:nn
+
+    1:
+        foreign lpvm access(list_of##0:wybe.list(?T), 0:wybe.int, 16:wybe.int, 0:wybe.int, ?out##0:?T)
+        foreign lpvm access(~list_of##0:wybe.list(?T), 8:wybe.int, 16:wybe.int, 0:wybe.int, ?list_of##1:wybe.list(?T))
+
+
+  LLVM code       :
+
+; ModuleID = 'generic_resources'
+
+
+ 
+
+
+declare external ccc  void @putchar(i8)    
+
+
+declare external ccc  void @print_int(i64)    
+
+
+declare external fastcc  i64 @"wybe.list.length1<0>"(i64, i64)    
+
+
+declare external fastcc  void @"wybe.string.print_string<0>"(i64)    
+
+
+declare external ccc  void @print_float(double)    
+
+
+@generic_resources.45 =    constant {i64, i64} { i64 7, i64 ptrtoint ([?? x i8]* @generic_resources.44 to i64) }
+
+
+@generic_resources.44 =    constant [?? x i8] c"default\00"
+
+
+@generic_resources.40 =    constant {i64, i64} { i64 1, i64 ptrtoint ([?? x i8]* @generic_resources.39 to i64) }
+
+
+@generic_resources.39 =    constant [?? x i8] c"a\00"
+
+
+@generic_resources.30 =    constant {i64, i64} { i64 1, i64 ptrtoint ([?? x i8]* @generic_resources.29 to i64) }
+
+
+@generic_resources.29 =    constant [?? x i8] c"b\00"
+
+
+declare external ccc  i8* @wybe_malloc(i32)    
+
+
+declare external ccc  void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)    
+
+
+define external fastcc  void @"generic_resources.<0>"()    {
+entry:
+  %1 = trunc i64 16 to i32  
+  %2 = tail call ccc  i8*  @wybe_malloc(i32  %1)  
+  %3 = ptrtoint i8* %2 to i64 
+  %4 = inttoptr i64 %3 to i64* 
+  %5 = getelementptr  i64, i64* %4, i64 0 
+  store  i64 bitcast (double 2.000000e0 to i64), i64* %5 
+  %6 = add   i64 %3, 8 
+  %7 = inttoptr i64 %6 to i64* 
+  %8 = getelementptr  i64, i64* %7, i64 0 
+  store  i64 0, i64* %8 
+  %9 = trunc i64 16 to i32  
+  %10 = tail call ccc  i8*  @wybe_malloc(i32  %9)  
+  %11 = ptrtoint i8* %10 to i64 
+  %12 = inttoptr i64 %11 to i64* 
+  %13 = getelementptr  i64, i64* %12, i64 0 
+  store  i64 bitcast (double 1.000000e0 to i64), i64* %13 
+  %14 = add   i64 %11, 8 
+  %15 = inttoptr i64 %14 to i64* 
+  %16 = getelementptr  i64, i64* %15, i64 0 
+  store  i64 %3, i64* %16 
+  %17 = tail call fastcc  {i64, i64}  @"generic_resources.get_default<0>"(i64  bitcast (double 3.000000e0 to i64), i64  %11)  
+  %18 = extractvalue {i64, i64} %17, 0 
+  %19 = extractvalue {i64, i64} %17, 1 
+  %20 = tail call fastcc  {i64, i64}  @"generic_resources.get_default<0>"(i64  1, i64  0)  
+  %21 = extractvalue {i64, i64} %20, 0 
+  %22 = extractvalue {i64, i64} %20, 1 
+  %23 = bitcast i64 %18 to double 
+  tail call ccc  void  @print_float(double  %23)  
+  tail call ccc  void  @putchar(i8  10)  
+  tail call ccc  void  @print_int(i64  %21)  
+  tail call ccc  void  @putchar(i8  10)  
+  %24 = trunc i64 16 to i32  
+  %25 = tail call ccc  i8*  @wybe_malloc(i32  %24)  
+  %26 = ptrtoint i8* %25 to i64 
+  %27 = inttoptr i64 %26 to i64* 
+  %28 = getelementptr  i64, i64* %27, i64 0 
+  store  i64 ptrtoint (i64* getelementptr inbounds ({i64, i64}, {i64, i64}* @generic_resources.30, i32 0, i32 0) to i64), i64* %28 
+  %31 = add   i64 %26, 8 
+  %32 = inttoptr i64 %31 to i64* 
+  %33 = getelementptr  i64, i64* %32, i64 0 
+  store  i64 0, i64* %33 
+  %34 = trunc i64 16 to i32  
+  %35 = tail call ccc  i8*  @wybe_malloc(i32  %34)  
+  %36 = ptrtoint i8* %35 to i64 
+  %37 = inttoptr i64 %36 to i64* 
+  %38 = getelementptr  i64, i64* %37, i64 0 
+  store  i64 ptrtoint (i64* getelementptr inbounds ({i64, i64}, {i64, i64}* @generic_resources.40, i32 0, i32 0) to i64), i64* %38 
+  %41 = add   i64 %36, 8 
+  %42 = inttoptr i64 %41 to i64* 
+  %43 = getelementptr  i64, i64* %42, i64 0 
+  store  i64 %26, i64* %43 
+  %46 = tail call fastcc  {i64, i64}  @"generic_resources.get_default<0>"(i64  ptrtoint (i64* getelementptr inbounds ({i64, i64}, {i64, i64}* @generic_resources.45, i32 0, i32 0) to i64), i64  %36)  
+  %47 = extractvalue {i64, i64} %46, 0 
+  %48 = extractvalue {i64, i64} %46, 1 
+  tail call fastcc  void  @"wybe.string.print_string<0>"(i64  %47)  
+  tail call ccc  void  @putchar(i8  10)  
+  %"1#tmp#7##0" = tail call fastcc  i64  @"wybe.list.length1<0>"(i64  %48, i64  0)  
+  tail call ccc  void  @print_int(i64  %"1#tmp#7##0")  
+  tail call ccc  void  @putchar(i8  10)  
+  ret void 
+}
+
+
+define external fastcc  {i64, i64} @"generic_resources.foo<0>"(i64  %"ls##0", i64  %"val##0")    {
+entry:
+  %49 = tail call fastcc  {i64, i64}  @"generic_resources.get_default<0>"(i64  %"val##0", i64  %"ls##0")  
+  %50 = extractvalue {i64, i64} %49, 0 
+  %51 = extractvalue {i64, i64} %49, 1 
+  %52 = insertvalue {i64, i64} undef, i64 %51, 0 
+  %53 = insertvalue {i64, i64} %52, i64 %50, 1 
+  ret {i64, i64} %53 
+}
+
+
+define external fastcc  {i64, i64} @"generic_resources.get_default<0>"(i64  %"in##0", i64  %"list_of##0")    {
+entry:
+  %"1#tmp#2##0" = icmp ne i64 %"list_of##0", 0 
+  br i1 %"1#tmp#2##0", label %if.then, label %if.else 
+if.then:
+  %54 = inttoptr i64 %"list_of##0" to i64* 
+  %55 = getelementptr  i64, i64* %54, i64 0 
+  %56 = load  i64, i64* %55 
+  %57 = add   i64 %"list_of##0", 8 
+  %58 = inttoptr i64 %57 to i64* 
+  %59 = getelementptr  i64, i64* %58, i64 0 
+  %60 = load  i64, i64* %59 
+  %61 = insertvalue {i64, i64} undef, i64 %56, 0 
+  %62 = insertvalue {i64, i64} %61, i64 %60, 1 
+  ret {i64, i64} %62 
+if.else:
+  %63 = insertvalue {i64, i64} undef, i64 %"in##0", 0 
+  %64 = insertvalue {i64, i64} %63, i64 undef, 1 
+  ret {i64, i64} %64 
+}

@@ -74,12 +74,12 @@ normaliseItem (ImportForeign files _) =
     mapM_ addForeignImport files
 normaliseItem (ImportForeignLib files _) =
     mapM_ addForeignLib files
-normaliseItem (ResourceDecl vis name typ init pos) = do
-  addSimpleResource name (SimpleResource typ init pos) vis
-  case init of
-    Nothing  -> return ()
-    Just val -> normaliseItem (StmtDecl (ProcCall [] "=" Nothing Det False
-                                         [Unplaced $ varSet name, val]) pos)
+normaliseItem (ResourceDecl vis name vars typ init pos) = do
+    addSimpleResource name vars (SimpleResource typ init pos) vis
+    case init of
+        Nothing  -> return ()
+        Just val -> normaliseItem (StmtDecl (ProcCall [] "=" Nothing Det False
+                                             [Unplaced $ varSet name, val]) pos)
 normaliseItem (FuncDecl vis mods (ProcProto name params resources) resulttype
     (Placed (Where body (Placed (Var var ParamOut rflow) _)) _) pos) =
     -- Handle special reverse mode case of def foo(...) = var where ....
@@ -437,7 +437,7 @@ initResources = do
     let cmdlineModSpec = ["command_line"]
     let cmdlineResources =
             if cmdlineModSpec == thisMod
-            then let cmdline = ResourceSpec cmdlineModSpec
+            then let cmdline nm = ResourceSpec cmdlineModSpec nm []
                  in [ResourceFlowSpec (cmdline "argc") ParamInOut
                     ,ResourceFlowSpec (cmdline "argv") ParamInOut]
             else []

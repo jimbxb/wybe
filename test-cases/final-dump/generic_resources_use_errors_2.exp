@@ -1,0 +1,3 @@
+Error detected during resource checking of module(s) generic_resources_use_errors_2
+[91mfinal-dump/generic_resources_use_errors_2.wybe:14:5: Unknown resource list_of(?i, ?t) in use statement
+[0m

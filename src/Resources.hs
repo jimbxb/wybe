@@ -248,6 +248,7 @@ resourceArgs pos rflow = do
          simpleSpecs
 
 
+specialResourcesSet :: Set VarName
 specialResourcesSet = keysSet specialResources
 
 
@@ -294,8 +295,8 @@ simpleResourceFlows pos (ResourceFlowSpec spec flow) = do
 -- | The local variable name to use for a resource.  This assumes the resource
 -- spec has already been canonicalised (fully module qualified).
 resourceVar :: ResourceSpec -> Compiler Ident
-resourceVar (ResourceSpec [] name) = return name
-resourceVar (ResourceSpec mod name) = do
+resourceVar (ResourceSpec [] name _) = return name
+resourceVar (ResourceSpec mod name _) = do
     -- Always use resource name as variable name, regardless of module
     -- XXX This could cause collisions!
     return name

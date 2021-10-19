@@ -17,6 +17,8 @@ import           Data.List           as List
 import           Data.Map            as Map
 import           Data.Maybe          as Maybe
 import           Data.Set            as Set
+import           Data.Function       (on)
+import           Data.Functor        ((<&>))
 import           Data.Tuple.Select
 import           Data.Foldable
 import           Data.Bifunctor
@@ -25,7 +27,6 @@ import           Resources
 import           Util
 import           Snippets
 import           Blocks              (llvmMapBinop, llvmMapUnop)
-import Data.Function (on)
 -- import qualified Data.List.Extra as Set
 
 
@@ -331,7 +332,7 @@ typeErrorMessage (ReasonOverload pspecs pos) =
 typeErrorMessage (ReasonWarnMultipleMatches match rest pos) =
     Message Warning pos $
         "Multiple procedures match this call's types and flows:" ++
-        List.concatMap (("\n    "++) . show) 
+        List.concatMap (("\n    "++) . show)
                        (procInfoProc <$> (match:rest))
         ++ "\nDefaulting to: " ++ show (procInfoProc match)
 typeErrorMessage (ReasonAmbig procName pos varAmbigs) =
@@ -811,8 +812,8 @@ data ProcInfo = ProcInfo {
   procInfoArgs    :: [TypeFlow],
   procInfoDetism  :: Determinism,
   procInfoImpurity:: Impurity,
-  procInfoInRes   :: Set ResourceName,
-  procInfoOutRes  :: Set ResourceName
+  procInfoInRes   :: Set ResourceSpec,
+  procInfoOutRes  :: Set ResourceSpec
   } deriving (Eq, Ord)
 
 instance Show ProcInfo where
@@ -822,7 +823,8 @@ instance Show ProcInfo where
         ++ if Set.null inRes && Set.null outRes
             then ""
             else " use " ++ intercalate ", "
-                 (Set.toList inRes ++ (('?':) <$> Set.toList outRes))
+                 (Set.toList (Set.map show inRes)
+                 ++ (('?':) <$> Set.toList (Set.map show outRes)))
 
 
 procInfoTypes :: ProcInfo -> [TypeSpec]
@@ -922,7 +924,7 @@ typecheckProcDecl' m pdef = do
                           Set.map (resourceName . resourceFlowRes)
                           $ Set.filter (flowsIn . resourceFlowFlow) resources
                     let bound = addBindings (inParams `Set.union` inResources)
-                                $ initBindingState pdef 
+                                $ initBindingState pdef
                                   $ Set.map resourceFlowRes resources
                     logTyped $ "bound vars: " ++ show bound
                     (def',assigned,tmpCount') <-
@@ -979,12 +981,23 @@ addDeclaredType procname pos arity (Param name typ flow _,argNum) = do
 -- | Record the types of available resources as local variables
 addResourceType :: ProcName -> OptPos -> ResourceFlowSpec -> Typed ()
 addResourceType procname pos rfspec = do
+    logTyped $ "Adding resource type " ++ show rfspec
     let rspec = resourceFlowRes rfspec
     resDef <- lift $ lookupResource rspec
     let (rspecs,implns) = unzip $ maybe [] Map.toList resDef
+    tys <- zipWithM (replaceResourceTypeVars procname pos rspec) rspecs implns
     zipWithM_ (\n -> constrainVarType (ReasonResource procname n pos) n)
-          (resourceName <$> rspecs) (resourceType <$> implns)
+          (resourceName <$> rspecs) tys
 
+replaceResourceTypeVars :: ProcName -> OptPos -> ResourceSpec -> ResourceSpec
+                        -> ResourceImpln -> Typed TypeSpec
+replaceResourceTypeVars procName pos (ResourceSpec _ n newSpecs) (ResourceSpec _ _ oldSpecs)
+        SimpleResource{resourceType=ty} = do
+    typing0 <- get
+    zipWithM_ (unifyTypes $ ReasonResource procName n pos) newSpecs oldSpecs
+    ty' <- ultimateType ty
+    put typing0
+    return ty'
 
 -- | Register variable types coming from explicit type constraints and type
 -- casts.  Casts are only permitted on foreign call arguments, and only specify
@@ -1107,11 +1120,9 @@ callProcInfos pstmt =
                  , let resources = Set.elems $ procProtoResources proto
                  , let realParams = List.filter (not . resourceParam) params
                  , let typflow = paramTypeFlow <$> realParams
-                 , let inResources = Set.fromList
-                        $ resourceName . resourceFlowRes <$>
+                 , let inResources = Set.fromList $ resourceFlowRes <$>
                           List.filter (flowsIn . resourceFlowFlow) resources
-                 , let outResources = Set.fromList
-                        $ resourceName . resourceFlowRes <$>
+                 , let outResources = Set.fromList $ resourceFlowRes <$>
                           List.filter (flowsOut . resourceFlowFlow) resources
                  , let detism = procDetism def
                  , let imp = procImpurity def
@@ -1239,10 +1250,16 @@ matchTypeList' callee pos callArgTypes calleeInfo = do
     logTyped $ "Matching types " ++ show callArgTypes
                ++ " with " ++ show calleeInfo
     let args = procInfoArgs calleeInfo
+    let inRes = procInfoInRes calleeInfo
+    let outRes = procInfoOutRes calleeInfo
+    let args = procInfoArgs calleeInfo
     let calleeTypes = typeFlowType <$> args
     let calleeFlows = typeFlowMode <$> args
+
     typing0 <- get
-    calleeTypes' <- refreshTypes calleeTypes
+    (calleeTypes', inRes', outRes') <- refreshTypes calleeTypes inRes outRes
+    mapM_ (addResourceType callee pos . (`ResourceFlowSpec` ParamIn))
+      $ Set.toList (Set.union inRes' outRes')
     matches <- zipWith3M (unifyTypes . flip (ReasonArgType callee) pos)
                [1..] callArgTypes calleeTypes'
     logTyping "Matched with typing: "
@@ -1254,23 +1271,26 @@ matchTypeList' callee pos callArgTypes calleeInfo = do
     then return $ OK
          (calleeInfo
         -- XXX this throws away the types of the callee
-        --   {procInfoArgs = List.zipWith TypeFlow matches calleeFlows},
-          {procInfoArgs = List.zipWith TypeFlow calleeTypes calleeFlows},
-
+        --   {procInfoArgs = List.zipWith TypeFlow matches calleeFlows,
+          {procInfoArgs=List.zipWith TypeFlow calleeTypes calleeFlows,
+           procInfoInRes=inRes', procInfoOutRes=outRes'},
           typing)
     else return $ Err [ReasonArgType callee n pos | n <- mismatches]
 
 
 -- | Refresh all type variables in a list of TypeSpecs.
 -- Does not modify the underlying Typing, excluding the typeVarCounter
-refreshTypes :: [TypeSpec] -> Typed [TypeSpec]
-refreshTypes tys = do
+refreshTypes :: [TypeSpec] -> Set ResourceSpec -> Set ResourceSpec
+             -> Typed ([TypeSpec], Set ResourceSpec, Set ResourceSpec)
+refreshTypes tys inRes outRes = do
     typing0 <- get
     modify (\s -> initTyping{typeVarCounter=typeVarCounter s})
     tys' <- refreshTypeVars tys
+    inRes' <- refreshResourceVars inRes
+    outRes' <- refreshResourceVars outRes
     logTyping $ "Refreshed types " ++ show tys ++ " with " ++ show tys'
     modify (\s -> typing0{typeVarCounter=typeVarCounter s})
-    return tys'
+    return (tys', inRes', outRes')
 
 
 -- | Replace all TypeVariables in a list of TypeSpecs with fresh TypeVariables
@@ -1281,6 +1301,7 @@ refreshTypeVars = mapM refreshTypeVar
 -- | Replace all TypeVariables in a TypeSpec with fresh TypeVariables
 refreshTypeVar :: TypeSpec -> Typed TypeSpec
 refreshTypeVar ty@TypeVariable{typeVariableName=nm} = do
+    logTyped $ "Refreshing type " ++ show ty
     mbty' <- gets $ Map.lookup nm . tvarDict
     case mbty' of
         Just ty' -> return ty'
@@ -1293,6 +1314,15 @@ refreshTypeVar ty@TypeSpec{typeParams=tys} = do
     return ty{typeParams=tys'}
 refreshTypeVar ty = return ty
 
+-- | Replace the TypeVariables in a Set of ResourceSpecs with fresh TypeVariables
+refreshResourceVars :: Set ResourceSpec -> Typed (Set ResourceSpec)
+refreshResourceVars ress = do
+    mapM refreshResourceSpecVars (Set.toList ress) <&> Set.fromList
+
+-- | Replace the TypeVariables in a ResourceSpec with fresh TypeVariables
+refreshResourceSpecVars :: ResourceSpec -> Typed ResourceSpec
+refreshResourceSpecVars (ResourceSpec m n tys) =
+     ResourceSpec m n <$> refreshTypeVars tys
 
 ----------------------------------------------------------------
 --                            Mode Checking
@@ -1601,13 +1631,13 @@ modecheckStmt m name defPos assigned detism tmpCount final
             logTyped $ "Exact mode matches: " ++ show exactMatches
             case (exactMatches,modeMatches) of
                 (match:rest, _)  -> do
-                    unless (List.null rest) $ 
-                        typeError $ ReasonWarnMultipleMatches match rest pos 
+                    unless (List.null rest) $
+                        typeError $ ReasonWarnMultipleMatches match rest pos
                     finaliseCall m name assigned detism resourceful tmpCount
                                  final pos args match stmt
                 ([], match:rest) -> do
-                    unless (List.null rest) $ 
-                        typeError $ ReasonWarnMultipleMatches match rest pos 
+                    unless (List.null rest) $
+                        typeError $ ReasonWarnMultipleMatches match rest pos
                     finaliseCall m name assigned detism resourceful tmpCount
                                  final pos args match stmt
                 ([],[]) -> do
@@ -1719,6 +1749,7 @@ modecheckStmt m name defPos assigned detism tmpCount final
 modecheckStmt m name defPos assigned detism tmpCount final
     stmt@(UseResources resources _ stmts) pos = do
     logTyped $ "Mode checking use ... in stmt " ++ show stmt
+    mapM_ (addResourceType name pos . (`ResourceFlowSpec` ParamIn)) resources
     (stmts', assigned', tmpCount')
         <- modecheckStmts m name defPos assigned detism tmpCount final stmts
     let boundRes = intersectMaybeSets (bindingVars assigned)
@@ -1797,13 +1828,14 @@ finaliseCall m name assigned detism resourceful tmpCount final pos args match
                   && List.null inResources && List.null outResources]
             ++ [ReasonResourceUnavail name res pos
                 | res <- Set.toList
-                    $ missingBindings inResources
+                    $ missingBindings (Set.map resourceName inResources)
                       $ addBindings specialResourcesSet assigned]
     typeErrors errs
     logTyped $ "Finalising call :  " ++ show stmt'
     logTyped $ "Input resources :  " ++ simpleShowSet inResources
     logTyped $ "Output resources:  " ++ simpleShowSet outResources
-    let specials = inResources `Set.intersection` specialResourcesSet
+    let specials = Set.map resourceName inResources
+                   `Set.intersection` specialResourcesSet
     let avail    = fromMaybe Set.empty (bindingVars assigned)
     logTyped $ "Specials in call:  " ++ simpleShowSet specials
     logTyped $ "Available vars  :  " ++ simpleShowSet avail
@@ -1819,8 +1851,8 @@ finaliseCall m name assigned detism resourceful tmpCount final pos args match
     let assigned' =
             bindingStateSeq matchDetism matchImpurity
             (pexpListOutputs args')
-            (assigned {bindingVars =
-                Set.union outResources <$> bindingVars assigned })
+            (assigned {bindingVars = Set.union (Set.map resourceName outResources)
+                                  <$> bindingVars assigned })
     logTyped $ "Generated special stmts = " ++ show specialInstrs
     logTyped $ "New instr = " ++ show stmt'
     logTyped $ "Generated extra stmts = " ++ show stmts

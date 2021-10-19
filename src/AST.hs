@@ -110,7 +110,7 @@ import           Data.List.Extra (nubOrd)
 import           Data.Map as Map
 import           Data.Maybe
 import           Data.Set as Set
-import           Data.Tuple.HT ( mapSnd )
+import           Data.Tuple.HT ( mapSnd, mapFst )
 import           Data.Word (Word8)
 import           Flow             ((|>))
 import           Numeric          (showHex)
@@ -143,7 +143,7 @@ data Item
      | ImportItems Visibility ModSpec [Ident] OptPos
      | ImportForeign [FilePath] OptPos
      | ImportForeignLib [Ident] OptPos
-     | ResourceDecl Visibility ResourceName TypeSpec (Maybe (Placed Exp)) OptPos
+     | ResourceDecl Visibility ResourceName [Ident] TypeSpec (Maybe (Placed Exp)) OptPos
        -- The Bool in the next two indicates whether inlining is forced
      | FuncDecl Visibility ProcModifiers ProcProto TypeSpec (Placed Exp) OptPos
      | ProcDecl Visibility ProcModifiers ProcProto [Placed Stmt] OptPos
@@ -897,10 +897,16 @@ lookupType context pos ty@(TypeSpec mod name args) = do
             return InvalidType
 
 -- |Add the specified resource to the current module.
-addSimpleResource :: ResourceName -> ResourceImpln -> Visibility -> Compiler ()
-addSimpleResource name impln vis = do
+addSimpleResource :: ResourceName -> [Ident] -> ResourceImpln -> Visibility -> Compiler ()
+addSimpleResource name vars impln@(SimpleResource ty _ pos) vis = do
     currMod <- getModuleSpec
-    let rspec = ResourceSpec currMod name
+    unless (nub vars == vars)
+      $ errmsg pos $ "Duplicate type parameter in: " ++ intercalate ", " vars
+    let unkownVars = Set.toList $ Set.difference (typeVarSet ty) (Set.fromList vars)
+    unless (List.null unkownVars)
+      $ errmsg pos $ "In resource parameter, unknown type(s): " 
+                  ++ intercalate ", " unkownVars 
+    let rspec = ResourceSpec currMod name $ TypeVariable <$> vars
     let rdef = Map.singleton rspec impln
     updateImplementation
       (\imp -> imp { modResources = Map.insert name rdef $ modResources imp,
@@ -911,25 +917,50 @@ addSimpleResource name impln vis = do
 
 -- |Find the definition of the specified resource visible in the current module.
 lookupResource :: ResourceSpec -> Compiler (Maybe ResourceDef)
-lookupResource res@(ResourceSpec mod name) = do
+lookupResource res@(ResourceSpec mod name vars) = do
     logAST $ "Looking up resource " ++ show res
     rspecs <- refersTo mod name modKnownResources resourceMod
+    let rspecs' = Set.filter (sameLength vars . resourceVars) rspecs
     logAST $ "Candidates: " ++ show rspecs
-    case (Set.size rspecs, Map.lookup name specialResources) of
+    case (Set.size rspecs', Map.lookup name specialResources) of
         (0, Just (_,ty)) | List.null mod ->
             return $ Just $ Map.singleton res
                    $ SimpleResource ty Nothing Nothing
         (0, _) -> return Nothing
         (1,_) -> do
-            let rspec = Set.findMin rspecs
+            let rspec@(ResourceSpec _ _ vars') = Set.findMin rspecs'
             maybeMod <- getLoadingModule $ resourceMod rspec
             let maybeDef = maybeMod >>= modImplementation >>=
                         (Map.lookup (resourceName rspec) . modResources)
             logAST $ "Found resource:  " ++ show maybeDef
             let rdef = trustFromJust "lookupResource" maybeDef
-            logAST $ "  with definition:  " ++ show rdef
-            return $ Just rdef
+            let rdef' = replaceResourceVars vars' vars rdef
+            logAST $ "  with definition:  " ++ show rdef'
+            return $ Just rdef'
         _   -> return Nothing
+
+
+replaceResourceVars :: [TypeSpec] -> [TypeSpec] -> ResourceDef -> ResourceDef
+replaceResourceVars old new defs = 
+    let tyMap = Map.fromList
+              $ List.map (mapFst typeVariableName)
+              $ List.filter (isTypeVariable . fst) 
+              $ zip old new
+    in Map.fromList $ List.map (uncurry $ replaceResourceTypes tyMap new)
+                    $ Map.toList defs
+
+replaceResourceTypes :: Map.Map TypeVarName TypeSpec -> [TypeSpec] 
+                     -> ResourceSpec -> ResourceImpln
+                     -> (ResourceSpec, ResourceImpln)
+replaceResourceTypes map new (ResourceSpec m n old) (SimpleResource ty exp pos)
+  | sameLength new old
+  = (ResourceSpec m n new, SimpleResource (replaceTypes map ty) exp pos)
+  | otherwise = shouldnt "replaceResourceTypes"
+
+replaceTypes :: Map.Map TypeVarName TypeSpec -> TypeSpec -> TypeSpec
+replaceTypes map ty@(TypeVariable n) = Map.findWithDefault ty n map
+replaceTypes map (TypeSpec m n ps) = TypeSpec m n $ replaceTypes map <$> ps
+replaceTypes _ ty = ty
 
 
 -- |All the "special" resources, which Wybe automatically generates where they
@@ -2275,6 +2306,10 @@ data TypeSpec = TypeSpec {
     | AnyType | InvalidType
               deriving (Eq,Ord,Generic)
 
+isTypeVariable :: TypeSpec -> Bool
+isTypeVariable (TypeVariable _) = True
+isTypeVariable _ = False
+
 -- |Return the set of type variables appearing (recursively) in a TypeSpec.
 typeVarSet :: TypeSpec -> Set TypeVarName
 typeVarSet TypeSpec{typeParams=params}
@@ -2307,12 +2342,13 @@ type VarDict = Map VarName TypeSpec
 
 data ResourceSpec = ResourceSpec {
     resourceMod::ModSpec,
-    resourceName::ResourceName
+    resourceName::ResourceName,
+    resourceVars::[TypeSpec]
     } deriving (Eq, Ord, Generic)
 
 instance Show ResourceSpec where
-    show (ResourceSpec mod name) =
-        maybeModPrefix mod ++ name
+    show (ResourceSpec mod name vars) =
+        maybeModPrefix mod ++ name ++ showArguments vars
 
 data ResourceFlowSpec = ResourceFlowSpec {
     resourceFlowRes::ResourceSpec,
@@ -2962,8 +2998,9 @@ instance Show Item where
     ++ showOptPos pos ++ "\n  "
     ++ intercalate "\n  " (List.map show items)
     ++ "\n}\n"
-  show (ResourceDecl vis name typ init pos) =
-    visibilityPrefix vis ++ "resource " ++ name ++ ":" ++ show typ
+  show (ResourceDecl vis name vars typ init pos) =
+    visibilityPrefix vis ++ "resource " ++ showArguments (('?':) <$> vars) 
+    ++ name ++ ":" ++ show typ
     ++ maybeShow " = " init " "
     ++ showOptPos pos
   show (FuncDecl vis modifiers proto typ exp pos) =

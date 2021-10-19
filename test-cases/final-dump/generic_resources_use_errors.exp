@@ -1,0 +1,3 @@
+Error detected during processing resources for module(s) generic_resources_use_errors
+[91mfinal-dump/generic_resources_use_errors.wybe:4:1: Unknown resource list_of(?i, ?i) in proc declaration
+[0m

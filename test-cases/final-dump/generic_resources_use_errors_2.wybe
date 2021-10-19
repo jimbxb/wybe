@@ -1,0 +1,18 @@
+resource (?t) list_of:list(?t)
+
+
+def get_default(in:?i, ?out:?i) use !list_of(?i) {
+    if { [?val | ?list_of ] = list_of ::
+        ?out = val
+       | otherwise :: 
+        ?out = in
+       } 
+}
+
+def foo(!ls:list(?i), val:?i, ?out:?i) use !io {
+    ?list_of = ls
+    use list_of(?i, ?t) in {
+        !get_default(val, ?out)
+        ?ls = list_of
+    }
+}
