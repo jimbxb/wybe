@@ -1112,7 +1112,7 @@ data Impurity = PromisedPure  -- ^The proc is pure despite having impure parts
               | Pure          -- ^The proc is pure, and so are its parts
               | Semipure      -- ^The proc is not pure, but callers can be pure
               | Impure        -- ^The proc is impure and makes its callers so
-    deriving (Eq, Ord, Show, Generic)
+    deriving (Eq, Ord, Enum, Show, Generic)
 
 
 -- | The printable modifier name for a purity, as specified by the user.

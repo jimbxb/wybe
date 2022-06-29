@@ -1272,7 +1272,7 @@ termToTypeFlow (Call _ [] ":" _ [Call _ [] _ flow [],ty]) =
 termToTypeFlow ty@(Call _ _ _ flow _) =
     (`TypeFlow` flow) <$> termToTypeSpec (setCallFlow ParamIn ty)
 termToTypeFlow other =
-    syntaxError (termPos other) $ "invalid higher order type argument " ++ show other
+    syntaxError (termPos other) $ "invalid higher-order type argument " ++ show other
 
 
 -- | Translate a Term to a proc or func prototype (with empty resource list)

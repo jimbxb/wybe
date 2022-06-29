@@ -1,0 +1,3 @@
+def {impure} call(f) {
+    !f
+}

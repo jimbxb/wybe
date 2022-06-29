@@ -262,7 +262,7 @@ transformStmt stmt@(ProcCall (Higher func) detism resourceful args) pos = do
         Typed _ (HigherOrderType ProcModifiers{modifierResourceful=True} _) _ -> do
             unless resourceful
                 $ lift $ errmsg pos
-                $ "Resourceful higher order call without ! resource marker: "
+                $ "Resourceful higher-order call without ! resource marker: "
                     ++ showStmt 4 stmt
         Typed _ (HigherOrderType _ _) _ -> nop
         _ -> shouldnt $ "bad resource higher call type" ++ show stmt

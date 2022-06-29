@@ -385,11 +385,11 @@ typeErrorMessage (ReasonExpType exp ty pos) =
         "Type of " ++ show exp ++ " incompatible with " ++ show ty
 typeErrorMessage (ReasonHigher callFrom callTo pos) =
     Message Error pos $
-        "Higher order call to " ++ showProcName callTo ++ " in "
+        "Higher-order call to " ++ showProcName callTo ++ " in "
         ++ showProcName callFrom ++ " has a type/flow error."
 typeErrorMessage (ReasonHigherFlow callFrom callTo idx flow expected pos) =
     Message Error pos $
-        "Higher order call to " ++ showProcName callTo ++ " in "
+        "Higher-order call to " ++ showProcName callTo ++ " in "
         ++ showProcName callFrom ++ " has "
         ++ showFlowName flow ++ " flow for argument "
         ++ show idx ++ ", but expects "
@@ -545,16 +545,25 @@ type Typed = StateT Typing Compiler
 --   records bindings of type variables, and contains a counter for generating
 --   new type variables.
 data Typing = Typing {
-                  typingDict::VarDict                -- ^variable types
-                , tvarDict::Map TypeVarName TypeSpec -- ^type variable types
-                , typeVarCounter::Int                -- ^for renumbering tvars
-                , typingErrs::[TypeError]            -- ^type errors seen
-                , tyTmpCtr::Int                      -- ^temp variable counter
+                  typingDict    :: VarDict
+                -- ^variable types
+                , tvarDict      :: Map TypeVarName TypeSpec
+                -- ^type variable types
+                , typeVarCounter:: Int
+                -- ^for renumbering tvars
+                , typingErrs    :: [TypeError]
+                -- ^type errors seen
+                , tyTmpCtr      :: Int
+                -- ^temp variable counter
+                , tyImpurity    :: Impurity
+                -- ^impurity of proc
+                , tyPosition    :: OptPos 
+                -- ^ position of proc definition
                 } deriving (Eq, Ord)
 
 
 instance Show Typing where
-  show (Typing dict tvardict _ errs _) =
+  show (Typing dict tvardict _ errs _ _ _) =
     "Typing " ++ showVarMap dict ++ "; " ++ showVarMap (Map.mapKeys show tvardict)
     ++ if List.null errs
        then " (with no errors)"
@@ -597,7 +606,7 @@ bindTypeVariables _ _ = return ()
 
 -- |The empty typing, assigning every var the type AnyType.
 initTyping :: Typing
-initTyping = Typing Map.empty Map.empty 0 [] $ shouldnt "unititialised counter"
+initTyping = Typing Map.empty Map.empty 0 [] (shouldnt "unititialised counter") Pure Nothing
 
 
 -- | Apply the monadic action with the given temp counter, returning the 
@@ -989,6 +998,7 @@ data CallInfo
       , fiPartial      :: Bool
     } | HigherInfo {
         hiFunc :: Exp
+      , hiMods :: ProcModifiers
     } | TestInfo {
         tiVar :: Exp
     }
@@ -1008,7 +1018,11 @@ instance Show CallInfo where
                  ++ intercalate ", "
                     ((resourceName <$> Set.toList inRes)
                      ++ (('?':) . resourceName <$> Set.toList outRes))
-    show (HigherInfo fn) = "higher " ++ show fn
+    show (HigherInfo fn mods) =
+        "higher-order term " ++ show fn
+        ++ if mods == defaultProcModifiers 
+            then "" 
+            else " with " ++ showProcModifiers mods ++ " modifiers"
     show (TestInfo exp) = "test " ++ show exp
 
 
@@ -1105,6 +1119,7 @@ typecheckProcDecl' m pdef = do
     let tmpCount = procTmpCount pdef
     let (ProcDefSrc def) = procImpln pdef
     let detism = procDetism pdef
+    let impurity = procImpurity pdef
     let pos = procPos pdef
     let vis = procVis pdef
     let inParams = Set.fromList $ paramName <$>
@@ -1147,7 +1162,7 @@ typecheckProcDecl' m pdef = do
             -- let unifs = List.concatMap foreignTypeEquivs
             --             (content . fst <$> calls)
             -- mapM_ (uncurry $ unifyExprTypes pos) unifs
-            calls' <- mapM (callInfos assignedVars) procCalls
+            calls' <- mapM (callInfos assignedVars impurity) procCalls
             logTyping $ "  With calls:\n  " ++ intercalate "\n    " (show <$> calls')
             let badCalls = List.map typingStmt
                          $ List.filter (List.null . typingInfos) calls'
@@ -1376,8 +1391,8 @@ foreignTypeEquivs _ = []
 
 
 -- |Get matching CallInfos for the supplied statement (which must be a call)
-callInfos :: Set VarName -> Placed Stmt -> Typed StmtTypings
-callInfos vars pstmt = do
+callInfos :: Set VarName -> Impurity -> Placed Stmt -> Typed StmtTypings
+callInfos vars imp pstmt = do
     let stmt = content pstmt
     case stmt of
         ProcCall (First m name procId) d resful args -> do
@@ -1388,9 +1403,10 @@ callInfos vars pstmt = do
                 couldBeTest   = (boolType == varTy || varTy == AnyType)
                              && List.null args && not resful
             if couldBeVar && (couldBeHigher || couldBeTest)
-            then let var = varGet name 
-                 in return $ StmtTypings pstmt $ [HigherInfo var | couldBeHigher]
-                                              ++ [TestInfo var | couldBeTest]
+            then let var = varGet name
+                 in return $ StmtTypings pstmt
+                           $ [TestInfo var | couldBeTest]
+                          ++ concat [higherInfos imp var varTy resful | couldBeHigher]
             else do
                 procs <- case procId of
                     Nothing  -> lift $ callTargets m name
@@ -1398,8 +1414,8 @@ callInfos vars pstmt = do
                 defs <- lift $ mapM getProcDef procs
                 firstInfos <- zipWithM firstInfo defs procs
                 return $ StmtTypings pstmt firstInfos
-        ProcCall (Higher fn) _ _ _ -> 
-            return $ StmtTypings pstmt [HigherInfo $ content fn]
+        ProcCall (Higher fn) _ resful _ ->
+            return $ StmtTypings pstmt $ higherInfos imp (content fn) AnyType resful
         _ ->
           shouldnt $ "callProcInfos with non-call statement "
                      ++ showStmt 4 stmt
@@ -1424,6 +1440,18 @@ firstInfo def proc = do
         imp = procImpurity def
     types' <- refreshTypes types
     return $ FirstInfo proc types' flows detism imp inResources outResources needsResBang False
+
+
+higherInfos :: Impurity -> Exp -> TypeSpec -> Bool -> [CallInfo]
+higherInfos _ fn@(Typed _ (HigherOrderType mods _) _) _ _ = [HigherInfo fn mods]
+higherInfos _ fn          (HigherOrderType mods _)      _ = [HigherInfo fn mods]
+higherInfos _ exp _ False = [HigherInfo exp defaultProcModifiers]
+higherInfos imp exp _ True =
+    [ HigherInfo exp defaultProcModifiers{modifierResourceful=resful, 
+                                          modifierImpurity=impurity}
+    | resful <- [False, True]
+    , impurity <- (if resful then (Pure:) else id) [Semipure .. max imp Pure]
+    ]
 
 
 -- |Return the "primitive" expr of the specified expr.  This unwraps Typed
@@ -1487,10 +1515,9 @@ typecheckCalls m name pos (stmtTyping@(StmtTypings pstmt typs):calls)
     matches <- mapM
                (matchTypes name callee stmtPos resful actualTypes actualModes)
                typs
-    let canonMatches = ap (,) (fmap (canonicalise 0) . callInfoTypes . fst)
-                    <$> catOKs matches
-    let validTypes = fst <$> nubBy ((==) `on` snd) canonMatches
-    logTyped $ "Valid types = " ++ show (snd <$> validTypes)
+    let canonMatches = (\x -> (canonicaliseInfo $ fst x, x)) <$> catOKs matches
+    let validTypes = snd <$> nubBy ((==) `on` fst) canonMatches
+    logTyped $ "Valid types = " ++ show validTypes
     let matchErrs = concatMap errList matches
     case validTypes of
         [] -> case (mod, callee, content <$> pexps, actualTypes) of
@@ -1582,14 +1609,14 @@ matchTypes caller callee pos hasBang callTypes callFlows
           (partialCallInfo, needsBang) = procToPartial callFlows hasBang calleeInfo
           calleeInfo''' = fromJust partialCallInfo
 matchTypes caller callee pos _ callTypes callFlows
-        calleeInfo@(HigherInfo fn) = do
+        calleeInfo@(HigherInfo fn infoMods) = do
     let callTFs = zipWith TypeFlow callTypes callFlows
     fnTy <- expType (Unplaced fn) >>= ultimateType
     logTyped $ "Checking higher call " ++ show fn ++ ":" ++ show fnTy
             ++ " with type " ++ show callTFs
     typing <-
         getTyping $ case fnTy of
-            HigherOrderType mods tfs -> 
+            HigherOrderType mods tfs | mods == infoMods ->
                 -- This handles the reification of higher order tests <-> bool fns
                 -- For first order cases, see `boolFnToTest' and `testToBoolFn'
                 let nCallTFs = length callTFs
@@ -1602,19 +1629,19 @@ matchTypes caller callee pos _ callTypes callFlows
                            && last callTFs == TypeFlow boolType ParamOut
                            && modifierDetism mods == SemiDet -- de-reified test
                          = tfs ++ [last callTFs]
-                         | otherwise = tfs
+                         | otherwise 
+                         = tfs
                 in if nCallTFs == length tfs'
                 then do
                     unifyTypeList' callee pos callTypes (typeFlowType <$> tfs')
-                    zipWith3M_ (\f1 f2 i -> 
+                    zipWith3M_ (\f1 f2 i ->
                         unless (f1 == f2)
                             $ typeError $ ReasonHigherFlow caller callee i f1 f2 pos)
                         (typeFlowMode <$> callTFs) (typeFlowMode <$> tfs) [1..]
                 else typeError $ ReasonArity caller callee pos nCallTFs (length tfs')
             _ ->
-                void $ getTyping 
-                     $ unifyTypes (ReasonHigher caller callee pos)
-                        fnTy $ HigherOrderType defaultProcModifiers callTFs
+                void $ unifyTypes (ReasonHigher caller callee pos)
+                        fnTy $ HigherOrderType infoMods callTFs
     let typing' = snd typing
     let errs = typingErrs typing'
     return $ if List.null errs
@@ -1694,6 +1721,12 @@ canonicaliseSingle tyMap ctr ty@HigherOrderType{higherTypeParams=tfs} =
         ((tys', ctr'), tyMap') = canonicaliseList tyMap ctr tys
     in ((ty{higherTypeParams=zipWith TypeFlow tys' $ typeFlowMode <$> tfs}, ctr'), tyMap')
 canonicaliseSingle tyMap ctr ty = ((ty, ctr), tyMap)
+
+
+canonicaliseInfo :: CallInfo -> Maybe (Either [TypeSpec] ProcModifiers)
+canonicaliseInfo FirstInfo{fiTypes=tys}  = Just $ Left $ fst $ canonicalise 0 tys
+canonicaliseInfo HigherInfo{hiMods=mods} = Just $ Right mods
+canonicaliseInfo TestInfo{}              = Nothing
 
 
 -- | Refresh all type variables in a list of TypeSpecs.
@@ -2012,8 +2045,8 @@ modecheckStmt m name defPos assigned detism final
     -- Find arg types and expand type variables
     args' <- modeCheckExps m name defPos assigned detism args
     assignedVars <- gets (Map.keysSet . typingDict)
-    x <- callInfos assignedVars (maybePlace stmt pos)
-    infos <- callInfos assignedVars (maybePlace stmt pos) <&> typingInfos
+    imp <- gets tyImpurity
+    infos <- callInfos assignedVars imp (maybePlace stmt pos) <&> typingInfos
     actualTypes <- mapM (expType >=> ultimateType) args'
     logTyped $ "    actual types     : " ++ show actualTypes
     let actualModes = List.map (expMode assigned) args'
@@ -2425,7 +2458,7 @@ finaliseCall m name defPos assigned detism resourceful final pos args
             modecheckStmts m name pos assigned' detism final stmts
         return (specialInstrs ++ maybePlace stmt' pos : stmts', assigned'')
 finaliseCall m name defPos assigned detism resourceful final pos args
-        (HigherInfo fn) _ =
+        (HigherInfo fn _) _ =
     modecheckStmt m name defPos assigned detism final
         (ProcCall (Higher $ fn `maybePlace` pos) detism resourceful args) pos
 finaliseCall m name defPos assigned detism resourceful final pos args
