@@ -1,0 +1,105 @@
+pragma no_standard_library
+
+use wybe.bool, wybe.comparison, wybe.optional
+
+constructor (K, V) map(cmp:(K, K, ?comparison), node:optional(node(K, V)))
+
+pub type mapping(K, V) {
+    pub `=>`(from:K, to:V)
+}
+
+pub def empty(cmp:(K, K, ?comparison)):_(K, V) = 
+    map(cmp, none)
+
+pub def singleton(cmp:(K, K, ?comparison), from:K, to:V):_(K, V) = 
+    map(cmp, some(node(from, to, none, none)))
+
+pub def from_list(cmp:(K, K, ?comparison), mappings:list(mapping(K, V))):_(K, V) = map where {
+    ?map = empty(cmp)
+    for (?k => ?v) in mappings {
+        with(!map, k, v)
+    }
+}
+
+pub def with(!map:_(K, V), mapping:mapping(K, V)) {
+    !map^node = some(insert(map^cmp, mapping^from, mapping^to, map^node))
+}
+
+pub def with(!map:_(K, V), from:K, to:V) {
+    !map^node = some(insert(map^cmp, from, to, map^node))
+}
+
+pub def without(!map:_(K, V), from:K) {
+    !map^node = delete(map^cmp, from, map^node)
+}
+
+pub def merge(a:_(K, V), b:_(K, V)):_(K, V) = map(a^cmp, merge(a^cmp, a^node, b^node))
+
+type node(K, V) {
+    pub node(key:K, value:V, left:optional(_(K, V)), right:optional(_(K, V)))
+    
+    pub def insert(cmp:(K, K, ?comparison), from:K, to:V, m:optional(_(K, V))):_(K, V) =
+        case m in {
+            some(node(?key, ?value, ?left, ?right)) :: 
+                let { cmp(from, key, ?ord) } in 
+                case ord in {
+                    lesser :: node(key, value, some(insert(cmp, from, to, left)), right)
+                  | greater :: node(key, value, left, some(insert(cmp, from, to, right)))
+                  | else :: node(from, to, left, right) 
+                }
+          | else :: node(from, to, none, none)
+        }
+
+    pub def delete(cmp:(K, K, ?comparison), from:K, m:optional(_(K, V))):optional(_(K, V)):optional(_(K, V)) =
+        case m in {
+            some(node(?key, ?value, ?left, ?right)) :: 
+                let { cmp(from, key, ?ord) } in 
+                case ord in {
+                    lesser :: some(node(key, value, delete(cmp, from, left), right))
+                  | greater :: some(node(key, value, left, delete(cmp, from, right)))
+                  | else :: merge(cmp, left, right)
+                }
+          | else :: none
+        }
+
+    pub def merge(cmp:(K, K, ?comparison), a:optional(_(K, V)), b:optional(_(K, V))):optional(_(K, V)) =
+        case a in {
+            some(node(?key_a, ?value_a, ?left_a, ?right_a)) :: 
+                case b in {
+                    some(node(?key_b, _, ?left_b, ?right_b)) :: 
+                        let { cmp(key_a, key_a, ?ord) } in 
+                        case ord in {
+                            lesser :: some(node(key_a, value_a, 
+                                                merge(cmp, left_a, b), right_b))
+                          | greater :: some(node(key_a, value_a, 
+                                                 left_a, merge(cmp, right_a, b)))
+                          | else :: some(node(key_a, value_a, 
+                                              merge(cmp, left_a, left_b), merge(cmp, right_a, left_b)))
+                        }
+                  | else :: a
+                }
+          | else :: b
+        }
+}
+
+use wybe
+
+pub def print(pk:{resource}(K), pv:{resource}(V), m:_(K, V)) use !io {
+    !print(0, pk, pv, m^node)
+}
+
+
+pub def print(indent:int, pk:{resource}(K), pv:{resource}(V), m:optional(node(K, V))) use !io {
+    case m in {
+        some(?n) ::
+            for ?i in 0..2*indent { !print ' ' }
+            !pk(n^key)
+            !print(" => ")
+            !pv(n^value)
+            !nl
+            !print(indent + 1, pk, pv, n^left)
+            !print(indent + 1, pk, pv, n^right)
+    }
+}
+
+

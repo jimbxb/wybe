@@ -1,0 +1,14 @@
+# purpose: An optional type
+# since  : 0.1
+
+pragma no_standard_library  # Standard library can't depend on itself!
+
+use wybe.bool, wybe.int
+
+pub constructor (T) none | some(value:T)
+
+pub def {test} is_none(option:_(T)) {
+    case option in {
+        some(_) :: fail
+    }
+} 
